@@ -4,6 +4,30 @@ const list = document.getElementById("fileList");
 
 import { readRootSync, Cursor } from "./nbt/main.js";
 
+async function readStructure(file) {
+    const root = readRootSync(Cursor.create(await file.bytes()));
+
+    if (root.format_version !== 2) {
+        return root;
+    }
+
+    if (root.compression !== 1 || !(root.structure instanceof Uint8Array)) {
+        throw new Error("Unsupported mcstructure v2 compression format");
+    }
+
+    const compressed = new Blob([root.structure])
+        .stream()
+        .pipeThrough(new DecompressionStream("deflate"));
+
+    const decompressed = new Uint8Array(
+        await new Response(compressed).arrayBuffer()
+    );
+
+    return {
+        structure: readRootSync(Cursor.create(decompressed))
+    };
+}
+
 /**
  * @type {File[]}
  */
@@ -52,7 +76,7 @@ function renderFiles() {
 
 submitButton.onclick = async () => {
     for (const file of uploadedFiles) {
-        const structure = readRootSync(Cursor.create(await file.bytes()));
+        const structure = await readStructure(file);
         console.log("parsing done: " + file.name);
 
         const blockPositionData = structure.structure.palette.default.block_position_data;
